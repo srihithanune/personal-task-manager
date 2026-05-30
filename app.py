@@ -21,9 +21,30 @@ id INTEGER PRIMARY KEY AUTOINCREMENT,
 name TEXT,
 email TEXT,
 phone TEXT,
-password TEXT
+password TEXT,
+security_question TEXT,
+security_answer TEXT
 )
 """)
+
+cursor.execute("PRAGMA table_info(users)")
+user_columns = [column[1] for column in cursor.fetchall()]
+
+if "security_question" not in user_columns:
+    cursor.execute(
+        """
+        ALTER TABLE users
+        ADD COLUMN security_question TEXT
+        """
+    )
+
+if "security_answer" not in user_columns:
+    cursor.execute(
+        """
+        ALTER TABLE users
+        ADD COLUMN security_answer TEXT
+        """
+    )
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS tasks(
@@ -538,12 +559,59 @@ background:#1f2937;
 border-right:1px solid #111827;
 bottom:0;
 box-shadow:8px 0 24px rgba(15,23,42,0.24);
+box-sizing:border-box;
 left:0;
+height:100vh;
+max-height:100vh;
+overflow-y:auto;
 padding:62px 10px 16px 10px;
 position:fixed;
+scrollbar-color:#475569 #111827;
+scrollbar-width:thin;
 top:0;
 width:220px;
 z-index:4900;
+}
+
+[class*="st-key-app_nav_panel"]{
+background:#1f2937 !important;
+border-right:1px solid #111827 !important;
+bottom:0 !important;
+box-shadow:8px 0 24px rgba(15,23,42,0.24) !important;
+box-sizing:border-box !important;
+left:0 !important;
+height:100vh !important;
+max-height:100vh !important;
+overflow-x:hidden !important;
+overflow-y:auto !important;
+padding:62px 10px 16px 10px !important;
+position:fixed !important;
+scrollbar-color:#475569 #111827 !important;
+scrollbar-width:thin !important;
+top:0 !important;
+width:220px !important;
+z-index:4900 !important;
+}
+
+.app-nav-panel::-webkit-scrollbar,
+[class*="st-key-app_nav_panel"]::-webkit-scrollbar{
+width:8px;
+}
+
+.app-nav-panel::-webkit-scrollbar-track,
+[class*="st-key-app_nav_panel"]::-webkit-scrollbar-track{
+background:#111827;
+}
+
+.app-nav-panel::-webkit-scrollbar-thumb,
+[class*="st-key-app_nav_panel"]::-webkit-scrollbar-thumb{
+background:#475569;
+border-radius:999px;
+}
+
+.app-nav-panel::-webkit-scrollbar-thumb:hover,
+[class*="st-key-app_nav_panel"]::-webkit-scrollbar-thumb:hover{
+background:#64748b;
 }
 
 .app-nav-panel-title{
@@ -558,7 +626,7 @@ text-transform:uppercase;
 [class*="st-key-panel_auth_"],
 [class*="st-key-panel_nav_"]{
 left:10px !important;
-position:fixed !important;
+position:static !important;
 width:200px !important;
 z-index:5300 !important;
 }
@@ -787,6 +855,15 @@ if "show_due_today_tasks" not in st.session_state:
 if "show_nav_panel" not in st.session_state:
     st.session_state.show_nav_panel = False
 
+if "forgot_password_user_id" not in st.session_state:
+    st.session_state.forgot_password_user_id = None
+
+if "forgot_password_question" not in st.session_state:
+    st.session_state.forgot_password_question = ""
+
+if "forgot_password_verified" not in st.session_state:
+    st.session_state.forgot_password_verified = False
+
 if not st.session_state.logged_in:
     restore_login_session()
 
@@ -819,44 +896,40 @@ if st.button("☰", key="nav_toggle"):
     st.rerun()
 
 def render_nav_panel():
-    st.markdown(
-        """
-        <div class="app-nav-panel">
-        <div class="app-nav-panel-title">Navigation</div>
-        """,
-        unsafe_allow_html=True
-    )
+    with st.container(key="app_nav_panel"):
+        st.markdown(
+            '<div class="app-nav-panel-title">Navigation</div>',
+            unsafe_allow_html=True
+        )
 
-    if not st.session_state.logged_in:
-        for item, key_name in [
+        if not st.session_state.logged_in:
+            for item, key_name in [
             ("☁ Login", "login"),
             ("👤 Register", "register")
-        ]:
-            if st.button(item, key=f"panel_auth_{key_name}"):
-                auth_page = item.split(" ", 1)[1]
-                st.session_state.auth_page = auth_page
-                st.session_state.show_nav_panel = False
-                st.rerun()
-    else:
-        for item, key_name, target_page in [
+            ]:
+                if st.button(item, key=f"panel_auth_{key_name}"):
+                    auth_page = item.split(" ", 1)[1]
+                    st.session_state.auth_page = auth_page
+                    st.session_state.show_nav_panel = False
+                    st.rerun()
+        else:
+            for item, key_name, target_page in [
             ("📊 Dashboard", "dashboard", "Dashboard"),
             ("➕ Add Task", "add_task", "Add Task"),
             ("📋 Manage Tasks", "manage_tasks", "Manage Tasks"),
             ("ℹ About", "about", "About"),
             ("⏻ Logout", "logout", "Logout")
-        ]:
-            if st.button(item, key=f"panel_nav_{key_name}"):
-                if target_page == "Logout":
-                    st.session_state.show_logout_confirm = True
-                else:
-                    st.session_state.nav_page = target_page
-                    if target_page != "Manage Tasks":
-                        st.session_state.edit_task_id = None
+            ]:
+                if st.button(item, key=f"panel_nav_{key_name}"):
+                    if target_page == "Logout":
+                        st.session_state.show_logout_confirm = True
+                    else:
+                        st.session_state.nav_page = target_page
+                        if target_page != "Manage Tasks":
+                            st.session_state.edit_task_id = None
 
-                st.session_state.show_nav_panel = False
-                st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
+                    st.session_state.show_nav_panel = False
+                    st.rerun()
 
 if st.session_state.show_nav_panel:
     if st.button("×", key="nav_close"):
@@ -892,7 +965,7 @@ if not st.session_state.logged_in:
 
         st.header("📝 Register")
 
-        name = st.text_input("Full Name")
+        name = st.text_input("Username")
 
         email = st.text_input("Email")
 
@@ -904,6 +977,21 @@ if not st.session_state.logged_in:
             key="register_password"
         )
 
+        security_question = st.selectbox(
+            "Security Question",
+            [
+                "What is your favorite color?",
+                "What is your pet's name?",
+                "What city were you born in?",
+                "What is your favorite food?"
+            ]
+        )
+
+        security_answer = st.text_input(
+            "Security Answer",
+            key="register_security_answer"
+        )
+
         if st.button("Register"):
 
             email_value = email.strip()
@@ -912,6 +1000,7 @@ if not st.session_state.logged_in:
             if (
                 name.strip() != ""
                 and password != ""
+                and security_answer.strip() != ""
                 and (
                     email_value != ""
                     or phone_value != ""
@@ -953,14 +1042,19 @@ if not st.session_state.logged_in:
                     cursor.execute(
                         """
                         INSERT INTO users
-                    (name,email,phone,password)
-                    VALUES(?,?,?,?)
+                    (
+                        name,email,phone,password,
+                        security_question,security_answer
+                    )
+                    VALUES(?,?,?,?,?,?)
                     """,
                         (
                             name.strip(),
                             email_value,
                             phone_value,
-                            password
+                            password,
+                            security_question,
+                            security_answer.strip()
                         )
                     )
 
@@ -1030,6 +1124,134 @@ if not st.session_state.logged_in:
                 st.error(
                     "❌ Invalid Credentials"
                 )
+
+        if st.button("Forgot Password?"):
+            st.session_state.auth_page = "Forgot Password"
+            st.session_state.forgot_password_user_id = None
+            st.session_state.forgot_password_question = ""
+            st.session_state.forgot_password_verified = False
+            st.rerun()
+
+    # ---------------- FORGOT PASSWORD ---------------- #
+
+    elif auth == "Forgot Password":
+
+        st.header("Reset Password")
+
+        username = st.text_input(
+            "Username",
+            key="forgot_password_username"
+        ).strip()
+
+        if st.button("Show Security Question"):
+            st.session_state.forgot_password_user_id = None
+            st.session_state.forgot_password_question = ""
+            st.session_state.forgot_password_verified = False
+
+            if username == "":
+                st.warning("Enter username")
+            else:
+                cursor.execute(
+                    """
+                    SELECT id, security_question
+                    FROM users
+                    WHERE name=?
+                    """,
+                    (username,)
+                )
+
+                reset_user = cursor.fetchone()
+
+                if reset_user is None:
+                    st.error("Username not found")
+                elif not reset_user[1]:
+                    st.error(
+                        "No security question is saved for this account"
+                    )
+                else:
+                    st.session_state.forgot_password_user_id = reset_user[0]
+                    st.session_state.forgot_password_question = reset_user[1]
+                    st.session_state.forgot_password_verified = False
+                    st.rerun()
+
+        if st.session_state.forgot_password_question:
+            st.info(st.session_state.forgot_password_question)
+
+            security_answer = st.text_input(
+                "Security Answer",
+                key="forgot_password_answer"
+            )
+
+            if st.button("Verify Answer"):
+                cursor.execute(
+                    """
+                    SELECT security_answer
+                    FROM users
+                    WHERE id=?
+                    """,
+                    (st.session_state.forgot_password_user_id,)
+                )
+
+                saved_answer = cursor.fetchone()
+
+                if (
+                    saved_answer
+                    and saved_answer[0]
+                    and security_answer.strip().lower()
+                    == saved_answer[0].strip().lower()
+                ):
+                    st.session_state.forgot_password_verified = True
+                    st.success("Answer verified")
+                else:
+                    st.session_state.forgot_password_verified = False
+                    st.error("Incorrect security answer")
+
+        if st.session_state.forgot_password_verified:
+            new_password = st.text_input(
+                "New Password",
+                type="password",
+                key="forgot_password_new_password"
+            )
+
+            confirm_password = st.text_input(
+                "Confirm New Password",
+                type="password",
+                key="forgot_password_confirm_password"
+            )
+
+            if st.button("Reset Password"):
+                if new_password == "":
+                    st.warning("Enter a new password")
+                elif new_password != confirm_password:
+                    st.error("Passwords do not match")
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE users
+                        SET password=?
+                        WHERE id=?
+                        """,
+                        (
+                            new_password,
+                            st.session_state.forgot_password_user_id
+                        )
+                    )
+
+                    conn.commit()
+
+                    st.session_state.auth_page = "Login"
+                    st.session_state.forgot_password_user_id = None
+                    st.session_state.forgot_password_question = ""
+                    st.session_state.forgot_password_verified = False
+
+                    st.success("Password reset successfully. Please login.")
+
+        if st.button("Back to Login"):
+            st.session_state.auth_page = "Login"
+            st.session_state.forgot_password_user_id = None
+            st.session_state.forgot_password_question = ""
+            st.session_state.forgot_password_verified = False
+            st.rerun()
 
 # ---------------- MAIN APP ---------------- #
 
@@ -1873,27 +2095,44 @@ Due in {due_days} day(s)
 
 ## Personal Task Manager
 
-Personal Task Manager helps you organize your day in a simple and clear way.
-You can keep important work in one place, follow upcoming deadlines, and stay
-updated on what still needs attention.
+Personal Task Manager is a simple task planning app for managing daily work,
+study tasks, personal responsibilities, and upcoming deadlines in one place.
 
-This app is useful for students planning study time, teachers keeping track
-of class work, employees managing daily responsibilities, and anyone handling
-personal tasks in everyday life.
+Each user has their own account, task list, dashboard, and calendar view.
+The app supports secure account recovery using a security question during
+password reset.
 
-### What You Can Do
+### Account Features
 
-- Add tasks for study, work, or personal life
-- Set priorities so important tasks stand out
-- Choose due dates and stay ready for upcoming deadlines
-- Update task details whenever plans change
-- Mark tasks as completed and track your progress
-- Use the dashboard for a quick view of your task status
+- Register with username, email or phone, password, and security question
+- Login using email or phone number
+- Reset a forgotten password by entering username, answering the saved
+security question, and setting a new password
+- Logout safely with confirmation
+
+### Task Features
+
+- Add tasks with description, user type, category, priority, due date,
+reminder days, notes, and important status
+- View tasks grouped by important and regular tasks
+- Mark tasks as completed
+- Edit task details when plans change
+- Delete individual tasks or remove all completed tasks
+- Filter tasks due today or already overdue
+- Search tasks by task name
+- Get reminder alerts before due dates
+
+### Dashboard Features
+
+- See total, completed, pending, and updated task counts
+- Track completion progress with a progress bar
+- View tasks in a calendar based on due date
+- Review task details in a table
 
 ### Why It Helps
 
-With everything in one place, it becomes easier to plan your day, finish work
-on time, and avoid forgetting important tasks.
+The app keeps planning, reminders, progress tracking, and task history in one
+place so users can focus on what needs attention next.
 
         """)
 
